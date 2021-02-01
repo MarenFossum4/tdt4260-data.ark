@@ -42,9 +42,9 @@
  * HINT: You will probably need to change this structure
  */
 struct avdc_cache_line {
-        avdc_tag_t tag;
-        int        valid;
-		int 	   position;     //ceep track of the position the bloks come in(LRU replacment policy)
+    unsigned int position = 0;
+    avdc_tag_t tag;
+    int        valid;
 };
 
 /**
@@ -115,95 +115,68 @@ avdc_dbg_log(avdark_cache_t *self, const char *msg, ...)
         }
 }
 
-void
-update_position_on_hit(int pos, avdark_cache_t *self, int index)
-{
-	int total_lines = (int) (self->assoc * self->number_of_sets);
-	for (int i = 0; i < total_lines;  i += self->number_of_sets){
-		if(self->lines[index+i].position < pos ){
-			self->lines[index+i].position += 1;
-		}
-	}
-}
 
-int
-update_position_on_mis(avdark_cache_t *self, int index)
-{
-	int highest_position = self->assoc-1;
-	int index_to_overwrite;
-	int total_lines = (int) (self->assoc * self->number_of_sets);
-	int empty_position = 0;
-	for (int i = 0; i < total_lines;  i += self->number_of_sets){
-		if(self->lines[index+i].position == -1){
-			empty_position = 1;
-			self->lines[index+i].position = 0;
-			index_to_overwrite = index+i;
-		}
-		if(self->lines[index+i].position == highest_position && !empty_position){
-			self->lines[index+i].position = 0;
-			index_to_overwrite = index+i;
-		}
-		else {
-			self->lines[index+i].position += 1;
-		}
-	}
-	return index_to_overwrite;
-
-}
 void
 avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type)
 {
-        /* TODO: Update this function */
-        avdc_tag_t tag = tag_from_pa(self, pa);
-        int index = index_from_pa(self, pa);
-        int hit;
-		int total_lines = (int) (self->assoc * self->number_of_sets);
-		
-		for (int i = 0; i < total_lines;  i += self->number_of_sets){
-			hit = self->lines[index+i].valid && self->lines[index+i].tag == tag;
-			//fprintf("hit: ", hit);
-			fprintf(hit, "Cache Internals\n");
-			if(hit){
-				update_position_on_hit(self->lines[index+i].position, self, index);
-				self->lines[index+i].position = 0;
-				index = index+i;
-				break;
+	/* TODO: Update this function */
+	avdc_tag_t tag = tag_from_pa(self, pa);
+	int index = index_from_pa(self, pa);
+	int hit = 0;
+	unsigned int total_lines = (unsigned int) (self->number_of_sets*self->assoc);
+	int index_to_overwrite = index;
+	for (unsigned int i = 0; i < total_lines; i += self->number_of_sets) {
+		self->lines[index+i].position += 1;
+		if (self->lines[index+i].valid && self->lines[index+i].tag == tag) {
+			hit = 1;
+			index = index+i;
+			self->lines[index].position = 0;
+		}
+		else {
+			if(self->lines[index+i].position > self->lines[index_to_overwrite].position){
+				index_to_overwrite = index +i;
 			}
 		}
-		
-		if (!hit) {
-				index = update_position_on_mis(self, index);
-				self->lines[index].valid = 1;
-				self->lines[index].tag = tag;
-			}
+	}
 
-        switch (type) {
-        case AVDC_READ: /* Read accesses */
-                avdc_dbg_log(self, "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                             (unsigned long)pa, (unsigned long)tag, index, hit);
-                self->stat_data_read += 1;
-                if (!hit)
-                        self->stat_data_read_miss += 1;
-                break;
+	
+	if (!hit) {
+		index = index_to_overwrite;
+		self->lines[index].valid = 1;
+		self->lines[index].tag = tag;
+		self->lines[index].position = 0;
+	}
+	
 
-        case AVDC_WRITE: /* Write accesses */
-                avdc_dbg_log(self, "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                             (unsigned long)pa, (unsigned long)tag, index, hit);
-                self->stat_data_write += 1;
-                if (!hit)
-                        self->stat_data_write_miss += 1;
-                break;
-        }
+	switch (type) {
+	case AVDC_READ: /* Read accesses */
+			avdc_dbg_log(self, "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
+						 (unsigned long)pa, (unsigned long)tag, index, hit);
+			self->stat_data_read += 1;
+			if (!hit)
+					self->stat_data_read_miss += 1;
+			break;
+
+	case AVDC_WRITE: /* Write accesses */
+			avdc_dbg_log(self, "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
+						 (unsigned long)pa, (unsigned long)tag, index, hit);
+			self->stat_data_write += 1;
+			if (!hit)
+					self->stat_data_write_miss += 1;
+			break;
+	}
 }
+
 
 void
 avdc_flush_cache(avdark_cache_t *self)
 {
-        /* TODO: Update this function */
-        for (int i = 0; i < self->number_of_sets; i++) {
+	/* TODO: Update this function */
+		unsigned int total_lines = (unsigned int) (self->number_of_sets*self->assoc);
+		for (unsigned int i = 0; i < total_lines; i++) {
                 self->lines[i].valid = 0;
                 self->lines[i].tag = 0;
-				self->lines[i].position = -1;
+				self->lines[i].position = 0;
         }
 }
 
@@ -243,7 +216,7 @@ avdc_resize(avdark_cache_t *self,
         /* HINT: If you change this, you may have to update
          * avdc_delete() to reflect changes to how thie self->lines
          * array is allocated. */
-        self->lines = AVDC_MALLOC(self->number_of_sets, avdc_cache_line_t);
+        self->lines = AVDC_MALLOC(self->number_of_sets*self->assoc, avdc_cache_line_t);
 
         /* Flush the cache, this initializes the tag array to a known state */
         avdc_flush_cache(self);
