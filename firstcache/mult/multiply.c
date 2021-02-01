@@ -43,15 +43,6 @@ matmul_opt()
          * here. It should calculate mat_c := mat_a * mat_b. See
          * matmul_ref() for a reference solution.
          */
-		int i, j, k;
-
-        for (j = 0; j < SIZE; j++) {
-                for (i = 0; i < SIZE; i++) {
-                        for (k = 0; k < SIZE; k++) {
-                                mat_c[i][j] += mat_a[i][k] * mat_b[k][j];
-                        }
-                }
-        }
 		 
 }
 
@@ -79,7 +70,6 @@ matmul_ref()
 static int
 verify_result()
 {
-	printf("vertify_results\n");
         double e_sum;
         int i, j;
 
@@ -91,7 +81,6 @@ verify_result()
                                 mat_c[i][j] - mat_ref[i][j];
                 }
         }
-		printf("e_sum %f\n", e_sum);
 
         return e_sum < 1E-6;
 }
@@ -137,7 +126,6 @@ init_matrices()
 static void
 run_multiply(int verify)
 {
-	printf("run_multiply\n");
         double time_start, time_stop;
 
         time_start = get_time();
@@ -189,7 +177,6 @@ main(int argc, char *argv[])
         while ((c = getopt(argc, argv, "vh")) != -1) {
                 switch (c) {
                 case 'v':
-						printf("vertify_in_main\n");
                         verify = 1;
                         break;
                 case 'h':
